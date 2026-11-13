@@ -10,13 +10,26 @@ import PerformanceCharts from './components/PerformanceCharts';
 import ConfusionMatrix from './components/ConfusionMatrix';
 import FeatureImportance from './components/FeatureImportance';
 import PredictionPlayground from './components/PredictionPlayground';
-import { getHealth, runClassification } from './services/api';
-import { AlertCircle, X, Sparkles, Database, CheckCircle, ArrowRight } from 'lucide-react';
+import EDA from './components/EDA';
+import { getHealth, runClassification, getPreprocessingPreview } from './services/api';
+import { Activity, AlertCircle, BarChart3, Check, Database, Eye, FlaskConical, SlidersHorizontal, Upload, X } from 'lucide-react';
+
+const WORKFLOW = [
+  { id: 'dataset', label: 'Add dataset', icon: Upload },
+  { id: 'eda', label: 'EDA', icon: BarChart3 },
+  { id: 'preprocessing', label: 'Preprocessing', icon: FlaskConical },
+  { id: 'preview', label: 'Preview data', icon: Eye },
+  { id: 'models', label: 'Select models', icon: SlidersHorizontal },
+  { id: 'results', label: 'Results', icon: Activity },
+];
 
 export default function App() {
   const [health, setHealth] = useState(null);
+  const [activeStep, setActiveStep] = useState('dataset');
   const [dataset, setDataset] = useState(null);
   const [selectedTarget, setSelectedTarget] = useState('');
+  const [droppedColumns, setDroppedColumns] = useState([]);
+  const [processedPreview, setProcessedPreview] = useState(null);
   const [targetAnalysis, setTargetAnalysis] = useState(null);
   const [experimentConfig, setExperimentConfig] = useState({
     selected_algorithms: [
@@ -38,6 +51,12 @@ export default function App() {
   const [experimentResults, setExperimentResults] = useState(null);
   const [liveLogs, setLiveLogs] = useState([]);
   const [error, setError] = useState(null);
+  useEffect(() => {
+    if (!dataset?.dataset_id || !selectedTarget) return;
+    let active = true;
+    getPreprocessingPreview(dataset.dataset_id, selectedTarget, droppedColumns).then(v => { if (active) setProcessedPreview(v); }).catch(e => setError(e.message));
+    return () => { active = false; };
+  }, [dataset?.dataset_id, selectedTarget, droppedColumns]);
 
   // Poll health on mount
   useEffect(() => {
@@ -58,6 +77,7 @@ export default function App() {
     setExperimentResults(null);
     setLiveLogs([]);
     setError(null);
+    setActiveStep('eda');
 
     // Default target column to the first candidate, or the last column
     if (data.target_candidates && data.target_candidates.length > 0) {
@@ -75,6 +95,7 @@ export default function App() {
     setExperimentResults(null);
     setLiveLogs([]);
     setError(null);
+    setActiveStep('dataset');
   };
 
   // Run Classification Experiment
@@ -101,6 +122,7 @@ export default function App() {
       const payload = {
         dataset_id: dataset.dataset_id,
         target_column: selectedTarget,
+        dropped_columns: droppedColumns,
         selected_algorithms: experimentConfig.selected_algorithms,
         primary_metric: experimentConfig.primary_metric,
         cv_folds: experimentConfig.cv_folds,
@@ -110,6 +132,7 @@ export default function App() {
 
       const results = await runClassification(payload);
       setExperimentResults(results);
+      setActiveStep('results');
 
       // Use the actual server agent logs
       if (results.agent_logs && results.agent_logs.length > 0) {
@@ -133,7 +156,25 @@ export default function App() {
       />
 
       {/* Main Body Content Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <main className="flex-1 w-full max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-7 py-5">
+        <div className="flex flex-col lg:flex-row gap-5 items-start">
+          <aside className="w-full lg:w-60 lg:shrink-0 lg:sticky lg:top-5 glass-card rounded-2xl p-3">
+            <div className="px-3 py-3 border-b border-slate-800 mb-2"><p className="text-[10px] uppercase tracking-[.18em] font-bold text-teal-300">Workspace</p><p className="text-sm font-semibold text-white mt-1">Model workflow</p></div>
+            <nav className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-1" aria-label="Project workflow">
+              {WORKFLOW.map((step, index) => {
+                const Icon = step.icon;
+                const blocked = step.id !== 'dataset' && !dataset;
+                const complete = step.id === 'dataset' ? !!dataset : step.id === 'eda' ? !!dataset : step.id === 'preprocessing' ? !!processedPreview : step.id === 'preview' ? !!processedPreview : step.id === 'models' ? !!targetAnalysis : step.id === 'results' ? !!experimentResults : false;
+                return <button key={step.id} type="button" disabled={blocked} onClick={() => setActiveStep(step.id)} className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${activeStep === step.id ? 'bg-teal-400/10 text-teal-200 border border-teal-400/20' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200 border border-transparent'}`}>
+                  <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${activeStep === step.id ? 'bg-teal-400/15' : 'bg-slate-900 group-hover:bg-slate-800'}`}>{complete && step.id !== 'dataset' ? <Check className="w-3.5 h-3.5 text-emerald-400"/> : <Icon className="w-3.5 h-3.5"/>}</span>
+                  <span className="min-w-0"><span className="block text-xs font-semibold">{step.label}</span><span className="hidden lg:block text-[10px] opacity-60 mt-0.5">Step {index + 1}</span></span>
+                </button>;
+              })}
+            </nav>
+            <div className="hidden lg:block mt-4 rounded-xl bg-slate-950/70 border border-slate-800 p-3"><p className="text-[10px] uppercase tracking-wider text-slate-500">Current dataset</p><p className="text-xs text-slate-300 mt-1 truncate">{dataset?.filename || 'No dataset added yet'}</p>{dataset && <p className="text-[10px] text-slate-500 mt-1">{dataset.row_count?.toLocaleString()} rows · {dataset.column_count} columns</p>}</div>
+          </aside>
+
+          <div className="flex-1 min-w-0 w-full space-y-5">
         {/* Error Notification Toast */}
         {error && (
           <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-800/80 text-rose-300 text-sm flex items-start justify-between gap-3 animate-fade-in">
@@ -150,8 +191,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Step 1: Upload Dataset (when no dataset loaded) */}
-        {!dataset && (
+        {activeStep === 'dataset' && (
           <DatasetUpload
             onDatasetUploaded={handleDatasetUploaded}
             isLoading={isLoadingDataset}
@@ -160,13 +200,10 @@ export default function App() {
           />
         )}
 
-        {/* Step 2: Dataset Loaded -> Configuration & Workflow */}
-        {dataset && (
-          <div className="space-y-8 animate-fade-in">
-            {/* Dataset Profiling Overview */}
-            <DatasetOverview dataset={dataset} />
+        {dataset && activeStep === 'eda' && <EDA dataset={dataset} target={selectedTarget} setError={setError} />}
 
-            {/* Target Column Selection & Imbalance Analysis */}
+        {dataset && activeStep === 'preprocessing' && <div className="space-y-5">
+            <div><p className="text-xs uppercase tracking-[.18em] text-teal-300 font-semibold">Step 3</p><h1 className="text-2xl font-bold mt-1">Preprocessing & feature selection</h1><p className="text-sm text-slate-400 mt-1">Choose your target and review how missing values and feature columns are handled.</p></div>
             <TargetAnalysis
               dataset={dataset}
               selectedTarget={selectedTarget}
@@ -175,8 +212,16 @@ export default function App() {
               setTargetAnalysis={setTargetAnalysis}
               setError={setError}
             />
+            <DatasetOverview dataset={dataset} target={selectedTarget} droppedColumns={droppedColumns} setDroppedColumns={setDroppedColumns} processedPreview={processedPreview} />
+          </div>}
 
-            {/* Algorithm & Metric Configuration */}
+        {dataset && activeStep === 'preview' && <div className="space-y-5">
+          <div><p className="text-xs uppercase tracking-[.18em] text-teal-300 font-semibold">Step 4</p><h1 className="text-2xl font-bold mt-1">Processed data preview</h1><p className="text-sm text-slate-400 mt-1">The first rows after preview imputation, with selected columns removed.</p></div>
+          <ProcessedDataPreview dataset={dataset} preview={processedPreview} loading={!processedPreview} />
+        </div>}
+
+        {dataset && activeStep === 'models' && <div className="space-y-5">
+            <div><p className="text-xs uppercase tracking-[.18em] text-teal-300 font-semibold">Step 5</p><h1 className="text-2xl font-bold mt-1">Choose models and evaluation settings</h1><p className="text-sm text-slate-400 mt-1">Select classifiers and start the experiment when your target is ready.</p></div>
             <ExperimentConfig
               config={experimentConfig}
               setConfig={setExperimentConfig}
@@ -184,16 +229,17 @@ export default function App() {
               isRunning={isRunningExperiment}
               disabled={!selectedTarget || !targetAnalysis}
             />
+        </div>}
 
-            {/* Real-time / Historic Agent Execution Logs */}
-            {(isRunningExperiment || liveLogs.length > 0) && (
+        {dataset && activeStep === 'results' && <div className="space-y-5">
+          <div><p className="text-xs uppercase tracking-[.18em] text-teal-300 font-semibold">Step 6</p><h1 className="text-2xl font-bold mt-1">Experiment results</h1></div>
+          {(isRunningExperiment || liveLogs.length > 0) && (
               <AgentExecutionLogs
                 logs={liveLogs}
                 isRunning={isRunningExperiment}
               />
             )}
 
-            {/* Step 3: Experiment Results & Visualizations */}
             {experimentResults && (
               <div className="space-y-8 pt-4 animate-slide-up">
                 {/* Winner Showcase & Leaderboard Table */}
@@ -225,8 +271,10 @@ export default function App() {
                 />
               </div>
             )}
+          {!experimentResults && !isRunningExperiment && <div className="glass-card rounded-2xl p-8 text-center"><p className="font-semibold text-slate-200">No experiment results yet</p><p className="text-sm text-slate-400 mt-1">Configure and run models to see their results here.</p><button onClick={() => setActiveStep('models')} className="mt-4 px-4 py-2 rounded-lg bg-teal-400 text-slate-950 text-sm font-semibold">Go to model selection</button></div>}
+        </div>}
           </div>
-        )}
+        </div>
       </main>
 
       {/* Footer */}
@@ -238,4 +286,12 @@ export default function App() {
       </footer>
     </div>
   );
+}
+
+function ProcessedDataPreview({ dataset, preview, loading }) {
+  const columns = preview?.columns || [];
+  return <div className="glass-card rounded-2xl p-5 space-y-4"><div><h2 className="font-semibold text-slate-100">First five processed rows</h2><p className="text-xs text-slate-400 mt-1">Target: {dataset ? 'selected in preprocessing' : '—'} · {columns.length} features included</p></div>
+    {loading ? <p className="text-sm text-slate-400">Loading preview…</p> : <div className="overflow-x-auto rounded-xl border border-slate-800"><table className="w-full text-left text-xs text-slate-300"><thead className="bg-slate-900 text-slate-400"><tr><th className="p-3">#</th>{columns.map(col => <th key={col} className="p-3 whitespace-nowrap">{col}</th>)}</tr></thead><tbody>{(preview?.sample_preview || []).map((row, i) => <tr key={i} className="border-t border-slate-800"><td className="p-3 text-slate-500">{i + 1}</td>{columns.map(col => <td key={col} className="p-3 whitespace-nowrap">{row[col] ?? 'null'}</td>)}</tr>)}</tbody></table></div>}
+    {preview?.note && <p className="text-xs text-slate-500">{preview.note}</p>}
+  </div>;
 }

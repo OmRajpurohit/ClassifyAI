@@ -12,7 +12,7 @@ map inputs into a higher-dimensional space where linear separation becomes feasi
 
 Radial Basis Function (RBF) Kernel:
     K(x, z) = exp(- gamma * ||x - z||^2)
-
+    
 Strengths:
     - Highly effective in high-dimensional spaces.
     - Robust against overfitting in sparse or high-dimensional domains (via margin maximization).

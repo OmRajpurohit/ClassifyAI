@@ -1,10 +1,4 @@
 """Main FastAPI Application Entrypoint for ClassifyAI.
-
-Sets up:
-- Application lifecycle and metadata for Swagger/OpenAPI interactive documentation.
-- CORS (Cross-Origin Resource Sharing) middleware for modern React frontend communication.
-- Routing to API endpoints.
-- Global exception handling to ensure clean JSON error messages without leaking server traces.
 """
 
 import os

@@ -67,6 +67,7 @@ class ExperimentConfig:
     cv_folds: int = 5
     test_size: float = 0.2
     random_state: int = 42
+    dropped_columns: List[str] = field(default_factory=list)
 
     def validate(self) -> None:
         """Validate configuration settings and boundary constraints."""
@@ -206,6 +207,16 @@ class ClassifierAgent:
         # ---------------------------------------------------------------------
         self._log("Separating features from target and encoding class labels...")
         prepared_data: PreparedData = prepare_features_and_target(df, config.target_column)
+        invalid_drops = set(config.dropped_columns) - set(prepared_data.X.columns)
+        if invalid_drops:
+            raise ValueError(f"Cannot drop unknown or target columns: {sorted(invalid_drops)}")
+        if config.dropped_columns:
+            prepared_data.X = prepared_data.X.drop(columns=config.dropped_columns)
+            prepared_data.numeric_features = [c for c in prepared_data.numeric_features if c not in config.dropped_columns]
+            prepared_data.categorical_features = [c for c in prepared_data.categorical_features if c not in config.dropped_columns]
+            prepared_data.preprocessing_notes.append(f"Manually excluded feature column(s): {', '.join(config.dropped_columns)}.")
+        if not prepared_data.X.shape[1]:
+            raise ValueError("At least one feature column must remain after manual column removal.")
         for note in prepared_data.preprocessing_notes:
             self._log(f"Data Prep Note: {note}")
 

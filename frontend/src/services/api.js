@@ -81,6 +81,16 @@ export async function analyzeTarget(datasetId, targetColumn) {
   return handleResponse(res);
 }
 
+export async function getPreprocessingPreview(datasetId, targetColumn, droppedColumns) {
+  const res = await fetch(`${API_BASE}/dataset/preprocessing-preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataset_id: datasetId, target_column: targetColumn, dropped_columns: droppedColumns }) });
+  return handleResponse(res);
+}
+
+export async function getDatasetEda(datasetId, targetColumn) {
+  const res = await fetch(`${API_BASE}/dataset/eda`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataset_id: datasetId, target_column: targetColumn }) });
+  return handleResponse(res);
+}
+
 /**
  * Execute the autonomous classifier selection agent.
  * @param {Object} config 

@@ -11,7 +11,7 @@ from typing import Tuple
 import pandas as pd
 
 # Default upload limit: 10 MB to prevent memory exhaustion
-DEFAULT_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+DEFAULT_MAX_FILE_SIZE_BYTES = 30 * 1024 * 1024  # 10 MB
 
 
 def sanitize_filename(filename: str) -> str:

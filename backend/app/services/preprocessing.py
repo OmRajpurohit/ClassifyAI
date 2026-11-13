@@ -183,7 +183,7 @@ def build_column_transformer(
         requires_scaling: If True, adds StandardScaler to the numeric pipeline.
 
     Returns:
-        ColumnTransformer: Configured, unfitted Scikit-learn ColumnTransformer.
+        ColumnTransformer: Configured,  unfitted Scikit-learn ColumnTransformer.
     """
     transformers = []
 
@@ -219,7 +219,6 @@ def build_classification_pipeline(
     requires_scaling: bool = True,
 ) -> Pipeline:
     """Construct an end-to-end Scikit-Learn Pipeline combining preprocessing and classifier.
-
     Educational Significance:
     -------------------------
     Encapsulating preprocessing and estimator inside a single `Pipeline` guarantees

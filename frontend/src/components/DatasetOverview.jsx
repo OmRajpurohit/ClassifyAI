@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Database, Hash, Type, AlertTriangle, CheckCircle, Info, ChevronDown, ChevronUp } from 'lucide-react';
 
-export default function DatasetOverview({ dataset }) {
+export default function DatasetOverview({ dataset, target, droppedColumns = [], setDroppedColumns, processedPreview }) {
   const [showAllColumns, setShowAllColumns] = useState(false);
 
   if (!dataset) return null;
@@ -119,10 +119,10 @@ export default function DatasetOverview({ dataset }) {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Sample Preview (First {dataset.sample_preview?.length || 5} Rows)
+            Processed Feature Preview (First {processedPreview?.sample_preview?.length || 5} Rows)
           </h4>
           <span className="text-xs text-slate-500">
-            {dataset.columns?.length} features total
+            {processedPreview?.columns?.length ?? dataset.columns?.length} features after selected drops
           </span>
         </div>
 
@@ -131,7 +131,7 @@ export default function DatasetOverview({ dataset }) {
             <thead className="bg-slate-900/90 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
               <tr>
                 <th className="py-2.5 px-3 font-semibold text-slate-500">#</th>
-                {dataset.columns?.map((col) => {
+                {(processedPreview?.columns || dataset.columns || []).map((col) => {
                   const isNum = dataset.numeric_columns?.includes(col);
                   return (
                     <th key={col} className="py-2.5 px-3 font-semibold whitespace-nowrap">
@@ -149,10 +149,10 @@ export default function DatasetOverview({ dataset }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
-              {dataset.sample_preview?.map((row, idx) => (
+              {(processedPreview?.sample_preview || dataset.sample_preview || []).map((row, idx) => (
                 <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
                   <td className="py-2 px-3 text-slate-500">{idx + 1}</td>
-                  {dataset.columns?.map((col) => (
+                  {(processedPreview?.columns || dataset.columns || []).map((col) => (
                     <td key={col} className="py-2 px-3 whitespace-nowrap text-slate-300">
                       {row[col] !== null && row[col] !== undefined ? String(row[col]) : (
                         <span className="text-amber-500/70 italic">null</span>
@@ -164,6 +164,16 @@ export default function DatasetOverview({ dataset }) {
             </tbody>
           </table>
         </div>
+        {processedPreview && <div className="space-y-3">
+          <p className="text-xs text-slate-400">{processedPreview.note} {processedPreview.removed_target_rows > 0 && `${processedPreview.removed_target_rows} row(s) with missing target “${target}” are omitted.`}</p>
+          <div className="rounded-xl border border-slate-800 p-4 space-y-1"><h4 className="text-xs uppercase tracking-wider text-slate-300 font-semibold">Row-by-row changes</h4>
+            {(processedPreview.row_reasons || []).map(item => <p key={item.row} className="text-xs text-slate-400">Row {item.row}: {item.reasons.join('; ')}</p>)}
+          </div>
+          <div className="rounded-xl border border-slate-800 p-4 space-y-2"><h4 className="text-xs uppercase tracking-wider text-slate-300 font-semibold">Preprocessing reasons by feature</h4>
+            {Object.entries(processedPreview.explanations || {}).map(([col, reason]) => <label key={col} className="flex gap-2 text-xs text-slate-400"><input type="checkbox" checked={!droppedColumns.includes(col)} onChange={e => setDroppedColumns?.(prev => e.target.checked ? prev.filter(c => c !== col) : [...prev, col])} /><span><b className="text-slate-200">{col}</b>: {reason}</span></label>)}
+            <p className="text-[11px] text-teal-300">Uncheck a feature to exclude it from model training.</p>
+          </div>
+        </div>}
       </div>
     </div>
   );

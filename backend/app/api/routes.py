@@ -26,10 +26,12 @@ from app.schemas.responses import (
     HealthResponse,
     PredictionRequest,
     PredictionResponse,
+    PreprocessingPreviewRequest,
     TargetAnalysisRequest,
     TargetAnalysisResponse,
 )
-from app.services.data_analyzer import analyze_dataset, analyze_target_column
+from app.services.data_analyzer import analyze_dataset, analyze_target_column, identify_column_types
+from app.services.eda import build_eda_summary
 from app.services.model_evaluator import SUPPORTED_METRICS
 from app.utils.file_handler import sanitize_filename, validate_csv_contents
 
@@ -137,6 +139,66 @@ def analyze_target(payload: TargetAnalysisRequest) -> TargetAnalysisResponse:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
+@router.post("/dataset/preprocessing-preview")
+def preprocessing_preview(payload: PreprocessingPreviewRequest) -> dict:
+    if payload.dataset_id not in DATASET_STORE:
+        raise HTTPException(status_code=404, detail="Dataset not found. Upload it again.")
+    _, source = DATASET_STORE[payload.dataset_id]
+    if payload.target_column not in source.columns:
+        raise HTTPException(status_code=400, detail="Target column was not found.")
+    invalid = set(payload.dropped_columns) - set(source.columns)
+    if invalid or payload.target_column in payload.dropped_columns:
+        raise HTTPException(status_code=400, detail="Dropped columns must be existing feature columns, not the target.")
+    clean = source.loc[source[payload.target_column].notna()].copy()
+    features = clean.drop(columns=[payload.target_column, *payload.dropped_columns])
+    types = identify_column_types(features)
+    explanations = {}
+    row_reasons = []
+    for row_index, row in features.iterrows():
+        changed = []
+        for col in features.columns:
+            if pd.isna(source.loc[row_index, col]) if row_index in source.index else False:
+                if col in types["numeric"]:
+                    changed.append(f"{col}: missing; filled with the feature median")
+                elif col in types["categorical"]:
+                    changed.append(f"{col}: missing; filled with the most frequent category")
+        row_reasons.append({"row": int(features.index.get_loc(row_index)) + 1, "reasons": changed or ["No missing feature values changed in this row."]})
+    for col in features.columns:
+        missing = int(features[col].isna().sum())
+        if col in types["numeric"]:
+            fill = features[col].median()
+            features[col] = features[col].fillna(fill)
+            explanations[col] = f"Numeric: missing values filled with median ({fill:g}); scaling is applied during training only for algorithms that need it."
+        elif col in types["categorical"]:
+            mode = features[col].mode(dropna=True)
+            fill = mode.iloc[0] if not mode.empty else None
+            if fill is not None:
+                features[col] = features[col].fillna(fill)
+            explanations[col] = f"Categorical: missing values filled with most frequent value ({fill}); one-hot encoded during training."
+        else:
+            explanations[col] = "Unsupported feature type: excluded from model preprocessing."
+        if missing == 0:
+            explanations[col] = explanations[col].replace("missing values filled with", "no missing values to fill with")
+    keep = [col for col in features.columns if col not in types["unsupported"]]
+    records = features[keep].head(5).where(pd.notna(features[keep].head(5)), None).to_dict(orient="records")
+    return {"columns": keep, "sample_preview": records, "explanations": {c: explanations[c] for c in keep}, "row_reasons": row_reasons[:5],
+            "removed_target_rows": int(source[payload.target_column].isna().sum()),
+            "note": "Imputation is shown for preview; training re-fits imputers within each fold to prevent leakage. One-hot encoding and optional scaling run in the training pipeline."}
+
+
+# -----------------------------------------------------------------------------
+# Dataset EDA Endpoint
+# -----------------------------------------------------------------------------
+
+@router.post("/dataset/eda")
+def dataset_eda(payload: TargetAnalysisRequest) -> dict:
+    """Return compact numeric and categorical distributions for the EDA dashboard."""
+    if payload.dataset_id not in DATASET_STORE:
+        raise HTTPException(status_code=404, detail="Dataset not found. Upload it again.")
+    _, df = DATASET_STORE[payload.dataset_id]
+    return build_eda_summary(df, payload.target_column)
+
+
 # -----------------------------------------------------------------------------
 # Classification Experiment Endpoints
 # -----------------------------------------------------------------------------
@@ -159,6 +221,7 @@ def run_classification_experiment(payload: ClassificationRunRequest) -> Experime
         cv_folds=payload.cv_folds,
         test_size=payload.test_size,
         random_state=payload.random_state,
+        dropped_columns=payload.dropped_columns,
     )
 
     try:

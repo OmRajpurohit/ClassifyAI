@@ -63,6 +63,12 @@ class TargetAnalysisRequest(BaseModel):
     target_column: str
 
 
+class PreprocessingPreviewRequest(BaseModel):
+    dataset_id: str
+    target_column: str
+    dropped_columns: List[str] = Field(default_factory=list)
+
+
 class TargetAnalysisResponse(BaseModel):
     """Schema describing class distribution and imbalance metrics for a selected target."""
 
@@ -88,6 +94,7 @@ class ClassificationRunRequest(BaseModel):
 
     dataset_id: str = Field(..., description="UUID of the previously uploaded dataset")
     target_column: str = Field(..., description="Name of the classification target column")
+    dropped_columns: List[str] = Field(default_factory=list, description="Feature columns excluded before training")
     selected_algorithms: Optional[List[str]] = Field(
         None,
         description="List of algorithm IDs to evaluate. If omitted or empty, all 6 algorithms are run.",
